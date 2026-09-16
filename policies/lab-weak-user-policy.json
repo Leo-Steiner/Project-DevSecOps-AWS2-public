@@ -1,0 +1,27 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "s3:GetObject",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::iu-devsecops-app-<SUFFIX>",
+                "arn:aws:s3:::iu-devsecops-app-<SUFFIX>/test-data/*"
+            ],
+            "Effect": "Allow",
+            "Sid": "ReadTestDataOnly"
+        },
+        {
+            "Action": [
+                "iam:*",
+                "cloudtrail:*",
+                "kms:PutKeyPolicy"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "MayAttemptButIsRefused"
+        }
+    ]
+}

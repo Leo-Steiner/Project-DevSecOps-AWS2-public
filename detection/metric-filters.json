@@ -1,0 +1,26 @@
+{
+  "failed-logins": {
+    "filterPattern": "{ ($.eventName = \"ConsoleLogin\") && ($.responseElements.ConsoleLogin = \"Failure\") }",
+    "metricName": "ConsoleLoginFailures",
+    "metricNamespace": "iu-devsecops/Security",
+    "period": 300,
+    "threshold": 5,
+    "alarmName": "iu-devsecops-console-login-failures"
+  },
+  "logging-interference": {
+    "filterPattern": "{ ($.eventSource = \"cloudtrail.amazonaws.com\") && (($.eventName = \"StopLogging\") || ($.eventName = \"DeleteTrail\") || ($.eventName = \"UpdateTrail\") || ($.eventName = \"PutEventSelectors\")) }",
+    "metricName": "LoggingInterference",
+    "metricNamespace": "iu-devsecops/Security",
+    "period": 60,
+    "threshold": 1,
+    "alarmName": "iu-devsecops-logging-interference"
+  },
+  "identity-changes": {
+    "filterPattern": "{ ($.eventSource = \"iam.amazonaws.com\") && (($.eventName = \"CreateUser\") || ($.eventName = \"AttachUserPolicy\") || ($.eventName = \"PutUserPolicy\") || ($.eventName = \"CreateAccessKey\") || ($.eventName = \"CreateLoginProfile\") || ($.eventName = \"AttachRolePolicy\")) }",
+    "metricName": "IdentityChanges",
+    "metricNamespace": "iu-devsecops/Security",
+    "period": 60,
+    "threshold": 1,
+    "alarmName": "iu-devsecops-identity-changes"
+  }
+}

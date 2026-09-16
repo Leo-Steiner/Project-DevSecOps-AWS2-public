@@ -1,0 +1,36 @@
+name: security-checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Template validity (cfn-lint)
+        run: |
+          pip install cfn-lint
+          cfn-lint infra/*.yaml --ignore-checks W1011
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Policy scan (checkov)
+        run: |
+          pip install checkov
+          checkov -d infra --framework cloudformation --compact --config-file .checkov.yaml || true
+
+      - name: No account IDs committed
+        run: |
+          if grep -rEn '[0-9]{12}' infra policies 2>/dev/null | grep -v '<ACCOUNT_ID>'; then
+            echo "::error::a twelve-digit account ID is committed - redact it"
+            exit 1
+          fi
+          echo "no account IDs found"

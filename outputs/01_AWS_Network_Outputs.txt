@@ -1,0 +1,36 @@
+﻿Description
+DevSecOps lab - network layer. VPC with two public and two private subnets across two Availability Zones, an internet gateway for the public tier only, and an S3 gateway endpoint so the private tier reaches storage without a NAT gateway. Every resource in this template is free of charge. 
+
+AWS NETWORK OUTPUTS
+Total outputs: 6
+Source: AWS outputs supplied by the user.
+
+1. AppSecurityGroupId
+   Value: sg-0f590fe12b2d43b8d
+   Description: -
+   Export name: -
+
+2. LoadBalancerSecurityGroupId
+   Value: sg-0ac6371f1694447fe
+   Description: -
+   Export name: -
+
+3. PrivateRouteTableId
+   Value: rtb-0d81b92ea4545a553
+   Description: Export this to evidence - it must contain no 0.0.0.0/0 route.
+   Export name: -
+
+4. PrivateSubnets
+   Value: subnet-0c83d9151044d7b27,subnet-09cd32cae4039c0ee
+   Description: -
+   Export name: -
+
+5. PublicSubnets
+   Value: subnet-0955ffcddb2c72f4a,subnet-061034357a5479fbb
+   Description: -
+   Export name: -
+
+6. VpcId
+   Value: vpc-01e5afb7ed4c28aa6
+   Description: -
+   Export name: iu-devsecops-VpcId

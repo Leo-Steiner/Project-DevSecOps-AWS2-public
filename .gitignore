@@ -1,0 +1,28 @@
+# credentials and keys — never commit
+*.pem
+*.key
+*.ppk
+.env
+.env.*
+credentials
+config
+.aws/
+**/*credentials*
+
+# raw evidence: keep locally, commit only redacted copies
+evidence/raw/
+*.csv
+*.log
+*.har
+
+# AWS CLI / CloudFormation working files
+packaged-*.yaml
+*.out.json
+.cfn-lint-cache/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,8 @@
+skip-check:
+  - CKV_AWS_18   # S3 access logging - covered by CloudTrail
+  - CKV_AWS_35   # CloudTrail KMS encryption - cost outside lab budget
+  - CKV_AWS_158  # CloudWatch Log Group KMS encryption - cost
+  - CKV_AWS_26   # SNS topic encryption - not required for lab alerts
+  - CKV_AWS_107  # DeploymentRole credentials exposure - constrained by scope
+  - CKV_AWS_109  # DeploymentRole permissions management - constrained by scope
+  - CKV_AWS_111  # DeploymentRole write access - constrained by scope

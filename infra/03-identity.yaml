@@ -1,0 +1,199 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DevSecOps lab - identity layer. Three least-privilege roles and one
+  deliberately weak console user used only for the controlled exercise.
+  Deploy AFTER 02-storage.yaml. DEPLOY ONLY IN A DISPOSABLE ACCOUNT.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: iu-devsecops
+  LabUserPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 10
+    Description: >
+      Console password for the exercise user. Must satisfy the account password
+      policy. Choose something you are willing to write down in the report as
+      "predictable"; never reuse a real password.
+
+Resources:
+  # --- Application role: read/write one prefix, use one key, nothing else ---
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-app-role"
+      Tags:
+        - Key: KeyUser
+          Value: "true"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: app-data-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadWriteTestDataPrefixOnly
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  Fn::Sub:
+                    - "${Arn}/test-data/*"
+                    - Arn: !ImportValue
+                        Fn::Sub: "${ProjectName}-AppBucketArn"
+              - Sid: UseTheDesignatedKeyOnly
+                Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource: !ImportValue
+                  Fn::Sub: "${ProjectName}-AppKeyArn"
+              - Sid: NeverAdministerIdentityOrPolicy
+                Effect: Deny
+                Action:
+                  - "iam:*"
+                  - "s3:PutBucketPolicy"
+                  - "s3:DeleteBucketPolicy"
+                  - "kms:PutKeyPolicy"
+                Resource: "*"
+
+  # --- Reviewer role: look, never touch ---
+  ReviewerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-reviewer-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/SecurityAudit
+      Policies:
+        - PolicyName: read-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:FilterLogEvents
+                  - logs:GetLogEvents
+                  - logs:DescribeLogGroups
+                  - cloudtrail:LookupEvents
+                  - cloudtrail:GetTrailStatus
+                  - cloudtrail:DescribeTrails
+                Resource: "*"
+              - Sid: NoWritesAtAll
+                Effect: Deny
+                Action:
+                  - "s3:Put*"
+                  - "s3:Delete*"
+                  - "iam:*"
+                  - "cloudtrail:Stop*"
+                  - "cloudtrail:Delete*"
+                  - "cloudtrail:Update*"
+                Resource: "*"
+
+  # --- Deployment role: manage the stack, but not its own permissions ---
+  DeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-deployment-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: deploy-stack
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - ec2:*
+                  - s3:GetBucket*
+                  - s3:ListBucket
+                  - logs:*
+                  - cloudwatch:*
+                Resource: "*"
+              - Sid: CannotEscalateOrTouchEvidence
+                Effect: Deny
+                Action:
+                  - "iam:CreateUser"
+                  - "iam:AttachUserPolicy"
+                  - "iam:PutUserPolicy"
+                  - "iam:AttachRolePolicy"
+                  - "iam:PutRolePolicy"
+                  - "iam:CreateAccessKey"
+                  - "iam:CreateLoginProfile"
+                Resource: "*"
+              - Sid: NoUnrestrictedRolePassing
+                Effect: Deny
+                Action: "iam:PassRole"
+                NotResource: !GetAtt AppRole.Arn
+
+  # --- Exercise identity. Weak password, no access keys, no personal data. ---
+  LabWeakUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub "${ProjectName}-lab-weak-user"
+      LoginProfile:
+        Password: !Ref LabUserPassword
+        PasswordResetRequired: false
+      Policies:
+        - PolicyName: minimal-lab-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadTestDataOnly
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !ImportValue
+                      Fn::Sub: "${ProjectName}-AppBucketArn"
+                  - Fn::Sub:
+                      - "${Arn}/test-data/*"
+                      - Arn: !ImportValue
+                          Fn::Sub: "${ProjectName}-AppBucketArn"
+              - Sid: MayAttemptButIsRefused
+                Effect: Deny
+                Action:
+                  - "iam:*"
+                  - "cloudtrail:*"
+                  - "kms:PutKeyPolicy"
+                Resource: "*"
+
+Outputs:
+  AppRoleArn:
+    Value: !GetAtt AppRole.Arn
+  ReviewerRoleArn:
+    Value: !GetAtt ReviewerRole.Arn
+  DeploymentRoleArn:
+    Value: !GetAtt DeploymentRole.Arn
+  LabWeakUserName:
+    Value: !Ref LabWeakUser
+  SignInUrl:
+    Description: Console sign-in URL for the exercise user.
+    Value: !Sub "https://${AWS::AccountId}.signin.aws.amazon.com/console"

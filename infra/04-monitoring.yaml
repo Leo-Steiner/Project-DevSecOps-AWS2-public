@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DevSecOps lab - monitoring layer. A multi-Region CloudTrail with log file
+  validation delivering to the evidence archive and to CloudWatch Logs, the
+  three metric filters and alarms specified in Appendix B, an SNS topic, and
+  a GuardDuty detector. Deploy AFTER 02-storage.yaml.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: iu-devsecops
+    MinLength: 3
+    MaxLength: 40
+    AllowedPattern: "[a-z][a-z0-9-]*"
+    Description: Must match ProjectName in the existing storage stack.
+  AlertEmail:
+    Type: String
+    Description: >
+      Address for alarm notifications. AWS sends a confirmation mail that you
+      MUST click, otherwise no alarm is ever delivered and the detection test
+      at S9 fails for a reason unrelated to your controls.
+    AllowedPattern: ".+@.+\\..+"
+  FailedLoginThreshold:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 100
+    Description: Failed console sign-ins within one 5-minute period.
+  EnableGuardDuty:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Set false if a GuardDuty detector already exists in this Region; keep that detector enabled.
+
+Conditions:
+  CreateGuardDuty: !Equals [!Ref EnableGuardDuty, "true"]
+
+Resources:
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${ProjectName}-security-alerts"
+      DisplayName: DevSecOps lab alerts
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  TrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/cloudtrail/${ProjectName}"
+      RetentionInDays: 30
+
+  TrailToLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-to-log-group
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt TrailLogGroup.Arn
+
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn:
+      - FailedLoginFilter
+      - LoggingInterferenceFilter
+      - IdentityChangeFilter
+    Properties:
+      TrailName: !Sub "${ProjectName}-trail"
+      S3BucketName: !ImportValue
+        Fn::Sub: "${ProjectName}-EvidenceBucket"
+      IsLogging: true
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      EnableLogFileValidation: true
+      CloudWatchLogsLogGroupArn: !GetAtt TrailLogGroup.Arn
+      CloudWatchLogsRoleArn: !GetAtt TrailToLogsRole.Arn
+      EventSelectors:
+        - ReadWriteType: All
+          IncludeManagementEvents: true
+          DataResources:
+            - Type: AWS::S3::Object
+              Values:
+                - Fn::Sub:
+                    - "${Arn}/test-data/"
+                    - Arn: !ImportValue
+                        Fn::Sub: "${ProjectName}-AppBucketArn"
+
+  # --- Rule 1: repeated failed console sign-ins ---
+  FailedLoginFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ ($.eventName = "ConsoleLogin") && ($.responseElements.ConsoleLogin = "Failure") }'
+      MetricTransformations:
+        - MetricNamespace: !Sub "${ProjectName}/Security"
+          MetricName: ConsoleLoginFailures
+          MetricValue: "1"
+          DefaultValue: 0
+
+  FailedLoginAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-console-login-failures"
+      AlarmDescription: Repeated failed console sign-ins within five minutes.
+      Namespace: !Sub "${ProjectName}/Security"
+      MetricName: ConsoleLoginFailures
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref FailedLoginThreshold
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  # --- Rule 2: interference with logging ---
+  LoggingInterferenceFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ ($.eventSource = "cloudtrail.amazonaws.com") && (($.eventName = "StopLogging") || ($.eventName = "DeleteTrail") || ($.eventName = "UpdateTrail") || ($.eventName = "PutEventSelectors")) }'
+      MetricTransformations:
+        - MetricNamespace: !Sub "${ProjectName}/Security"
+          MetricName: LoggingInterference
+          MetricValue: "1"
+          DefaultValue: 0
+
+  LoggingInterferenceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-logging-interference"
+      AlarmDescription: >
+        Any attempt to stop, delete or reconfigure a trail, whether it
+        succeeded or was denied.
+      Namespace: !Sub "${ProjectName}/Security"
+      MetricName: LoggingInterference
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  # --- Rule 3: identity changes ---
+  IdentityChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ ($.eventSource = "iam.amazonaws.com") && (($.eventName = "CreateUser") || ($.eventName = "AttachUserPolicy") || ($.eventName = "PutUserPolicy") || ($.eventName = "CreateAccessKey") || ($.eventName = "CreateLoginProfile") || ($.eventName = "AttachRolePolicy")) }'
+      MetricTransformations:
+        - MetricNamespace: !Sub "${ProjectName}/Security"
+          MetricName: IdentityChanges
+          MetricValue: "1"
+          DefaultValue: 0
+
+  IdentityChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-identity-changes"
+      AlarmDescription: Creation of identities or attachment of permissions.
+      Namespace: !Sub "${ProjectName}/Security"
+      MetricName: IdentityChanges
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Condition: CreateGuardDuty
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+
+Outputs:
+  TrailArn:
+    Description: Use with "aws cloudtrail validate-logs --trail-arn".
+    Value: !GetAtt Trail.Arn
+  LogGroupName:
+    Value: !Ref TrailLogGroup
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+  ConfirmSubscription:
+    Description: Reminder
+    Value: Check your inbox and confirm the SNS subscription before testing.
+  TrailName:
+    Value: !Ref Trail
+  TrailLogGroupArn:
+    Value: !GetAtt TrailLogGroup.Arn
+  TrailToLogsRoleArn:
+    Value: !GetAtt TrailToLogsRole.Arn
+  GuardDutyDetectorId:
+    Condition: CreateGuardDuty
+    Value: !Ref GuardDutyDetector
+
