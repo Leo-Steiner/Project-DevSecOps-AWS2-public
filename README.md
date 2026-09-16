@@ -17,16 +17,22 @@ A hardened, monitored AWS environment built with DevSecOps principles, together 
 
 ## Results
 
+## Results
+
 | Test | Result |
 |---|---|
-| Permitted S3 access | Pass |
-| Prohibited S3 access | Access Denied |
-| Failed-login alarm | Delivered |
-| Log tampering | Blocked by Object Lock |
-| Persistence attempt | Access Denied |
-| CloudTrail log integrity | 13/13 digest files valid, 150/150 log files valid |
-| Recovery time | 20 minutes 19 seconds |
-| Pipeline checks | cfn-lint, gitleaks, checkov — all green |
+| Identity | Pass — permitted upload succeeded; forbidden policy attachment refused |
+| Network | Pass — private route table has no 0.0.0.0/0 route; app port admitted from the LB group only |
+| Storage | Partial — permitted upload succeeded; wrong-key upload refused; foreign-identity object-read test not established |
+| Log tampering | Partial — sacrificial application object deleted (version preserved by bucket versioning); evidence archive access refused with AccessDenied (IAM policy); no actual log file was modified |
+| Logging | Pass — evidence archive refused tampering; 13/13 digests and 150/150 log files valid |
+| Detection | **Partial — sign-in alarm delivered; two of three alarms stayed silent (see Report Section 6.2)** |
+| Persistence | Pass — CreateUser refused; no second identity created |
+| Recovery | Pass — baseline restored in 20 min 19 s |
+| Pipeline checks | Passing with documented exceptions — see `.checkov.yaml` and `.cfn-lint` |
+|
+
+The Detection row reflects the most instructive finding of the exercise: two of three alarms were correctly specified and correctly deployed but never fired because the API call was never issued at all. See the report's Section 6.2 for the full analysis.
 
 ## Repository structure
 

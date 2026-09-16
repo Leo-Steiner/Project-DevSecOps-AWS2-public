@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DevSecOps lab - data protection layer. A customer-managed KMS key whose policy
+  separates key administration from key use, an application bucket that enforces
+  TLS and the designated key, and a separate evidence archive with versioning and
+  Object Lock. Deploy this BEFORE 03-identity.yaml and 04-monitoring.yaml.
+
+Parameters:
+  ProjectName:
+    Type: String
+  BucketSuffix:
+    Type: String
+    Description: >
+      A short unique string (e.g. your initials plus four digits). Bucket names
+      are globally unique, so deployment fails if this is already taken.
+    AllowedPattern: "[a-z0-9-]{4,20}"
+  ArchiveRetentionDays:
+    Type: Number
+    Default: 7
+    Description: Object Lock governance retention for the evidence archive.
+
+Resources:
+  # --- KMS key: administration and use are separate statements ---
+  AppKey:
+    arn:aws:cloudformation:eu-central-1:<ACCOUNT_ID>:stack/iu-devsecops-storage/9e5a8100-b0fa-11f1-a0b9-0aef846f0ba5
+    Type: AWS::KMS::Key
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "${ProjectName} application data key"
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountRootAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: AllowUseByTaggedRolesOnly
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+            Condition:
+              StringEquals:
+                "aws:PrincipalTag/KeyUser": "true"
+
+  # --- Application bucket ---
+  AppBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub "${ProjectName}-app-${BucketSuffix}"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt AppKey.Arn
+            BucketKeyEnabled: true
+
+  # --- Evidence archive: separate bucket, versioned, Object Lock ---
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${ProjectName}-evidence-${BucketSuffix}"
+      ObjectLockEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: GOVERNANCE
+            Days: !Ref ArchiveRetentionDays
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+Outputs:
+  AppBucketName:
+    Value: !Ref AppBucket
+    Export:
+      Name: !Sub "${ProjectName}-AppBucket"
+  AppBucketArn:
+    Value: !GetAtt AppBucket.Arn
+    Export:
+      Name: !Sub "${ProjectName}-AppBucketArn"
+  EvidenceBucketName:
+    Value: !Ref EvidenceBucket
+    Export:
+      Name: !Sub "${ProjectName}-EvidenceBucket"
+  AppKeyArn:
+    Value: !GetAtt AppKey.Arn
+    Export:
+      Name: !Sub "${ProjectName}-AppKeyArn"
+  AppKeyAliasName:
+    Value: !Ref AppKeyAlias
+

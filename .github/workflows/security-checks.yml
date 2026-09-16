@@ -25,7 +25,7 @@ jobs:
       - name: Policy scan (checkov)
         run: |
           pip install checkov
-          checkov -d infra --framework cloudformation --compact --config-file .checkov.yaml || true
+          checkov -d infra --framework cloudformation --compact --config-file .checkov.yaml
 
       - name: No account IDs committed
         run: |

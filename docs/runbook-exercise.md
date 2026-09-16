@@ -1,9 +1,9 @@
 # Controlled Exercise Runbook
 
 ## Scope
-- Account alias: iu-devsecops-lab
+- Account alias: leodevsecops
 - Region: eu-central-1
-- Start time (UTC): 2026-09-15T21:07:31Z
+- Start time (UTC): 2026-09-14T21:07:31Z
 - Configuration revision: 4ac57fd 
 
 ## Recovery plan

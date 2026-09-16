@@ -6,7 +6,7 @@
 |---|---|
 | Account alias | `leodevsecops` |
 | AWS Region | `eu-central-1` (Europe / Frankfurt) |
-| Project start date | 2026-09-15 |
+| Project start date | 2026-09-14 |
 | Project end date | 2026-09-16 |
 
 ## Scope statement
@@ -28,9 +28,8 @@ No resource outside this AWS account is accessed, modified or tested. No product
 
 | Field | Value |
 |---|---|
-| Repository URL | `https://github.com/Leo-Steiner/Project-DevSecOps-AWS2` |
-| Visibility | Private until S18 |
-| Licence | MIT |
+| Repository URL | `https://github.com/Leo-Steiner/Project-DevSecOps-AWS2-public` |
+| Visibility | Public |
 
 ## Access model
 
